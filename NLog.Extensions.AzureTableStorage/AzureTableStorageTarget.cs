@@ -1,6 +1,7 @@
 ﻿using System;
 using System.ComponentModel.DataAnnotations;
 using NLog.Targets;
+using NLog.Layouts;
 
 namespace NLog.Extensions.AzureTableStorage
 {
@@ -14,7 +15,7 @@ namespace NLog.Extensions.AzureTableStorage
         public string ConnectionStringKey { get; set; }
 
         [Required]
-        public string TableName { get; set; }
+        public SimpleLayout TableName { get; set; }
 
         public string PartitionKeyPrefix { get; set; }
         public string PartitionKeyPrefixKey { get; set; }
@@ -25,9 +26,8 @@ namespace NLog.Extensions.AzureTableStorage
         protected override void InitializeTarget()
         {
             base.InitializeTarget();
-            ValidateParameters();
             _configManager = new ConfigManager(ConnectionStringKey);
-            _tableStorageManager = new TableStorageManager(_configManager, TableName);
+            _tableStorageManager = new TableStorageManager(_configManager);
 
             // use PartitionKeyPrefixKey if present
             if (!string.IsNullOrWhiteSpace(PartitionKeyPrefixKey))
@@ -39,22 +39,10 @@ namespace NLog.Extensions.AzureTableStorage
             {
                 PartitionKeyPrefix = DateTime.UtcNow.ToString(PartitionKeyPrefixDateFormat);
             }
-        }
 
-        private void ValidateParameters()
-        {
-            IsNameValidForTableStorage(TableName);
-        }
-
-        private void IsNameValidForTableStorage(string tableName)
-        {
-            var validator = new AzureStorageTableNameValidator(tableName);
-            if (!validator.IsValid())
+            if (TableName.IsFixedText)
             {
-                throw new NotSupportedException(tableName + " is not a valid name for Azure storage table name.")
-                {
-                    HelpLink = "http://msdn.microsoft.com/en-us/library/windowsazure/dd179338.aspx"
-                };
+                _tableStorageManager.ValidateNameForTableStorage(TableName.Text);
             }
         }
 
@@ -63,14 +51,14 @@ namespace NLog.Extensions.AzureTableStorage
             if (_tableStorageManager != null)
             {
                 var layoutMessage = Layout.Render(logEvent);
-
+                var tableName = TableName.Render(logEvent);
                 if (string.IsNullOrEmpty(LogTimestampFormatString))
                 {
-                    _tableStorageManager.Add(new LogEntity(PartitionKeyPrefix, logEvent, layoutMessage));
+                    _tableStorageManager.Add(new LogEntity(PartitionKeyPrefix, logEvent, layoutMessage), tableName);
                 }
                 else
                 {
-                    _tableStorageManager.Add(new LogEntity(PartitionKeyPrefix, logEvent, layoutMessage, LogTimestampFormatString));
+                    _tableStorageManager.Add(new LogEntity(PartitionKeyPrefix, logEvent, layoutMessage, LogTimestampFormatString), tableName);
                 }
             }
         }
